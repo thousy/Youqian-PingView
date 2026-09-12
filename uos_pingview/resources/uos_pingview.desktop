@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=UOSPingView
+Name[zh_CN]=批量网络监控工具 (PingInfoView)
+Comment=Multi-Host Ping Monitor for UOS
+Comment[zh_CN]=统信 UOS 批量多目标网络连通性监控工具
+Exec=/usr/bin/python3 /opt/uos_pingview/uos_pingview/main.py
+Icon=network-wired
+Terminal=false
+Type=Application
+Categories=Network;System;Utility;
+Keywords=ping;network;icmp;uos;monitor;
+StartupNotify=true

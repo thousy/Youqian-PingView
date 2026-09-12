@@ -1,0 +1,41 @@
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# 虚拟环境
+.venv/
+venv/
+ENV/
+env/
+
+# 用户规则强制脱敏项：本地测试快照、测试图片、本地历史记录
+history_records/
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+screenshots/
+snapshots/
+cache/
+.user_uploaded/
+
+# 原版 Windows 二进制第三方专有文件
+*.exe
+*.chm
+
+# 本地构建输出产物 (大文件建议通过 GitHub Release 发布)
+*.deb
+*.tar.gz
+*.zip
+
+# IDE 与操作系统临时文件
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db

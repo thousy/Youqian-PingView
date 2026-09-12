@@ -1,0 +1,5 @@
+# 保证 Linux 脚本与桌面快捷方式永远使用 LF 换行符
+*.sh text eol=lf
+*.desktop text eol=lf
+*.py text eol=lf
+*.md text eol=lf
