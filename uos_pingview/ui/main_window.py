@@ -690,16 +690,19 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(self, "导出失败", f"生成 CSV 失败: {e}")
 
     def show_about(self):
-        QMessageBox.about(
-            self,
-            "关于 UOSPingView",
-            "<h3>UOSPingView v1.0 (统信 UOS Desktop V25 专版)</h3>"
-            "<p>对标经典工具 PingInfoView，针对 Linux / 统信 UOS 平台深度定制的原生图形化批量网络探测监控工具。</p>"
-            "<ul>"
-            "<li>支持批量 IP / 域名 / CIDR 段 / 范围展开</li>"
-            "<li>免 root 高并发非阻塞探测</li>"
-            "<li>经典双窗格总览与明细联动</li>"
-            "<li>支持 HTML 与 CSV 报表导出</li>"
+        about_text = (
+            "<h2 style='color:#2563eb; margin-bottom:4px;'>Youqian PingView v1.0.2</h2>"
+            "<p style='color:#64748b; font-size:12px;'>专为统信 UOS Desktop 与 Linux 深度定制的原生批量网络监控工具</p>"
+            "<hr style='border:none; border-top:1px solid #e2e8f0;'/>"
+            "<p><b>🌟 核心亮点：</b></p>"
+            "<ul style='margin-left: -15px;'>"
+            "<li><b>双引擎保障</b>：PyQt5 现代大盘 + Python 原生零依赖引擎，未激活/离线环境秒开；</li>"
+            "<li><b>100% 原生 IPv6 支持</b>：识别 IPv6 单目标、TCP 端口探测与 HLIM 跳数抓取；</li>"
+            "<li><b>经典双窗格与交互</b>：支持 Ctrl/Shift 连选跳选、带表头复制、列宽自由拖拽；</li>"
+            "<li><b>活动故障实时呈现</b>：在失败视图下，新故障主机秒级自动在大盘弹出；</li>"
+            "<li><b>1:1 原版属性面板</b>：双击或右键属性随时查看 20+ 项网络统计指标。</li>"
             "</ul>"
-            "<p>深度适配统信 UOS Desktop V25</p>"
+            "<p><b>开源仓库：</b><a href='https://github.com/thousy/Youqian-PingView'>https://github.com/thousy/Youqian-PingView</a></p>"
+            "<p style='color:#94a3b8; font-size:11px;'>作者：MoMo (ThousyMo) · 基于 MIT 开源协议发布 · 致敬 NirSoft PingInfoView</p>"
         )
+        QMessageBox.about(self, "关于 Youqian PingView", about_text)
