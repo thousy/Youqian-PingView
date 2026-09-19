@@ -23,11 +23,15 @@ snapshots/
 cache/
 .user_uploaded/
 
-# 原版 Windows 二进制第三方专有文件
+# 原版 Windows 二进制第三方专有文件与本地临时配置
 *.exe
 *.chm
+*.cfg
+PingInfoView_hosts.txt
 
 # 本地构建输出产物 (大文件建议通过 GitHub Release 发布)
+dist/
+build/
 *.deb
 *.tar.gz
 *.zip

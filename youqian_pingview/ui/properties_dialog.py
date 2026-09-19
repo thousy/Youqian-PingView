@@ -2,11 +2,18 @@
 属性对话框模块：1:1 复刻原版 PingInfoView 经典属性查看窗口
 """
 
-from ..qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
-    QPushButton, QLabel, QFont, Qt
-)
-from ..core.pinger import HostStat
+try:
+    from youqian_pingview.qt_compat import (
+        QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
+        QPushButton, QLabel, QFont, Qt
+    )
+    from youqian_pingview.core.pinger import HostStat
+except (ImportError, ModuleNotFoundError, ValueError):
+    from qt_compat import (
+        QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
+        QPushButton, QLabel, QFont, Qt
+    )
+    from core.pinger import HostStat
 
 
 class PropertiesDialog(QDialog):
@@ -55,12 +62,12 @@ class PropertiesDialog(QDialog):
         fields = [
             ("主机名:", f"{h.target}:{h.port}" if h.port else h.target),
             ("IP 地址:", h.resolved_ip or h.target),
-            ("响应 IP 地址:", h.resolved_ip or h.target),
+            ("响应 IP 地址:", h.reply_ip or h.resolved_ip or h.target),
             ("成功次数:", str(h.success_count)),
             ("失败次数:", str(h.failed_count)),
             ("连续失败次数:", str(h.consecutive_failures) if h.consecutive_failures > 0 else ""),
             ("最大连续失败次数:", str(h.max_consecutive_failures) if h.max_consecutive_failures > 0 else ""),
-            ("最大连续失败时间:", ""),
+            ("最大连续失败时间:", h.max_consecutive_failure_time or ""),
             ("失败率(%):", f"{h.failure_rate:.0f}%" if h.total_sent > 0 else ""),
             ("总计发送Pings数:", str(h.total_sent)),
             ("最后 Ping 状态:", h.last_status),
@@ -71,10 +78,10 @@ class PropertiesDialog(QDialog):
             ("最后成功时间:", h.last_success_time or ""),
             ("最后失败时间:", h.last_failed_time or ""),
             ("最小Ping时间:", min_str),
-            ("最大Ping时间:", max_str),
             ("序号:", str(h.index)),
+            ("所属分组:", h.group or "默认分组"),
             ("禁用:", "是" if not h.enabled else "否"),
-            ("MAC 地址:", ""),
+            ("MAC 地址:", h.mac_address or ""),
         ]
 
         for label_text, val in fields:

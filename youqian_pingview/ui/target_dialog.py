@@ -2,28 +2,21 @@
 目标录入与编辑对话框
 """
 
-from ..qt_compat import (
-    QDialog, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
-    QPushButton, QLabel, QFileDialog, QMessageBox
-)
-from ..core.target_parser import parse_targets_text, TargetItem
+try:
+    from youqian_pingview.qt_compat import (
+        QDialog, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
+        QPushButton, QLabel, QFileDialog, QMessageBox
+    )
+    from youqian_pingview.core.target_parser import parse_targets_text, TargetItem
+    from youqian_pingview.core.constants import SAMPLE_TEXT
+except (ImportError, ModuleNotFoundError, ValueError):
+    from qt_compat import (
+        QDialog, QVBoxLayout, QHBoxLayout, QPlainTextEdit,
+        QPushButton, QLabel, QFileDialog, QMessageBox
+    )
+    from core.target_parser import parse_targets_text, TargetItem
+    from core.constants import SAMPLE_TEXT
 from typing import List
-
-
-SAMPLE_TEXT = """# ==========================================
-# 在下方输入需要探测的 IP 地址或主机名列表
-# 支持以下常用格式 (每行一个目标，可带描述)：
-# 1. 普通IP:        192.168.1.1
-# 2. IP与描述:      192.168.1.1 核心交换机网关
-# 3. 域名解析:      www.baidu.com 百度外网连通性
-# 4. CIDR网段:      192.168.1.0/29 财务室子网 (自动展开)
-# 5. IP连续范围:    192.168.1.10-192.168.1.20 打印机集群
-# 6. TCP端口探测:   192.168.1.200:80 内网Web服务
-# ==========================================
-127.0.0.1 本机环回
-223.5.5.5 阿里公共DNS
-114.114.114.114 114公共DNS
-"""
 
 
 class TargetDialog(QDialog):
@@ -37,8 +30,23 @@ class TargetDialog(QDialog):
     def init_ui(self, initial_text: str):
         layout = QVBoxLayout(self)
 
-        tip_label = QLabel("请输入 IP 地址、主机名或 CIDR 网段列表 (支持空格隔开添加中文描述，支持 # 注释行)：")
-        tip_label.setStyleSheet("color: #475569; font-weight: bold; margin-bottom: 4px;")
+        tip_label = QLabel(
+            "<b>📌 目标输入格式：</b>每行一个地址，格式为 <code>IP/域名 [描述]</code>（如 <code>192.168.1.1 核心网关</code>，支持 <code>:80</code> 端口与 <code>/24</code> 网段）<br>"
+            "<b>📁 分组设置方法：</b>单独起一行输入 <b><span style='color:#1d4ed8; background:#dbeafe; padding:1px 4px; border-radius:3px;'>Group: 分组名</span></b> 或 <b><span style='color:#1d4ed8; background:#dbeafe; padding:1px 4px; border-radius:3px;'>分组: 分组名</span></b>，下方地址自动归入该组（主界面表格支持双击分组折叠与展开）"
+        )
+        tip_label.setWordWrap(True)
+        tip_label.setStyleSheet("""
+            QLabel {
+                background-color: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 8px 12px;
+                color: #334155;
+                font-size: 12px;
+                line-height: 140%;
+                margin-bottom: 4px;
+            }
+        """)
         layout.addWidget(tip_label)
 
         self.text_edit = QPlainTextEdit()
@@ -61,6 +69,11 @@ class TargetDialog(QDialog):
         btn_load = QPushButton("从文件载入...")
         btn_load.clicked.connect(self.load_from_file)
         btn_bar.addWidget(btn_load)
+
+        btn_insert_group = QPushButton("➕ 插入分组模板")
+        btn_insert_group.setToolTip("在当前光标处快速插入 Group: 分组名")
+        btn_insert_group.clicked.connect(self.insert_group_template)
+        btn_bar.addWidget(btn_insert_group)
 
         btn_clear = QPushButton("清空内容")
         btn_clear.clicked.connect(self.text_edit.clear)
@@ -105,5 +118,14 @@ class TargetDialog(QDialog):
         self.parsed_items = items
         self.accept()
 
+    def insert_group_template(self):
+        """在当前光标位置插入分组模板行"""
+        cursor = self.text_edit.textCursor()
+        prefix = "\n" if cursor.position() > 0 and not self.text_edit.toPlainText().endswith("\n") else ""
+        cursor.insertText(f"{prefix}Group: 新分组名称\n")
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.setFocus()
+
     def get_text(self) -> str:
         return self.text_edit.toPlainText()
+

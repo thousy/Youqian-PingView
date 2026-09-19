@@ -2,10 +2,16 @@
 动态图标生成模块：使用 QPainter 自绘轻量矢量状态灯与操作图标
 """
 
-from ..qt_compat import (
-    QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QPolygonF,
-    Qt, QPointF, QRectF
-)
+try:
+    from youqian_pingview.qt_compat import (
+        QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QPolygonF,
+        Qt, QPointF, QRectF, QFont
+    )
+except (ImportError, ModuleNotFoundError, ValueError):
+    from qt_compat import (
+        QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QPolygonF,
+        Qt, QPointF, QRectF, QFont
+    )
 
 
 def create_status_icon(color_hex: str, size: int = 16) -> QIcon:
@@ -84,6 +90,30 @@ def create_action_icon(action_type: str, size: int = 24) -> QIcon:
         painter.drawLine(int(size / 2) + 4, 8, int(size / 2), 4)
         painter.drawLine(4, size - 5, size - 4, size - 5)
 
+    elif action_type == "columns":
+        # 绘制“选择列”图标：多列表格布局图标
+        painter.setBrush(QBrush(QColor("#ffffff")))
+        painter.setPen(QPen(QColor("#475569"), 1.6))
+        painter.drawRoundedRect(QRectF(3, 3, size - 6, size - 6), 2, 2)
+        painter.drawLine(3, 8, size - 3, 8)
+        col_w = (size - 6) / 3
+        painter.drawLine(int(3 + col_w), 3, int(3 + col_w), size - 3)
+        painter.drawLine(int(3 + col_w * 2), 3, int(3 + col_w * 2), size - 3)
+
+    elif action_type == "sort_az":
+        # 绘制“AZ 排序”图标：字母 A 和 Z 配以排序箭头
+        painter.setPen(QPen(QColor("#2563eb"), 1))
+        bold_weight = getattr(getattr(QFont, "Weight", QFont), "Bold", 75)
+        font = QFont("Arial", 8, bold_weight)
+        painter.setFont(font)
+        painter.drawText(QRectF(1, 1, 13, 11), Qt.AlignCenter, "A")
+        painter.drawText(QRectF(1, 12, 13, 11), Qt.AlignCenter, "Z")
+        pen_arrow = QPen(QColor("#2563eb"), 1.8, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen_arrow)
+        painter.drawLine(17, 5, 17, size - 5)
+        painter.drawLine(14, size - 8, 17, size - 5)
+        painter.drawLine(20, size - 8, 17, size - 5)
+
     painter.end()
     return QIcon(pixmap)
 
@@ -103,6 +133,8 @@ class AppIcons:
         self.clear = create_action_icon("clear")
         self.settings = create_action_icon("settings")
         self.export = create_action_icon("export")
+        self.columns = create_action_icon("columns")
+        self.sort_az = create_action_icon("sort_az")
 
     @classmethod
     def get(cls):

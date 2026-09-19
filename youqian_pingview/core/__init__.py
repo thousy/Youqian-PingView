@@ -1,9 +1,10 @@
 """
-UOSPingView 核心处理模块
+Youqian-PingView 核心处理模块
 """
 from .target_parser import TargetItem, parse_targets_text
 from .pinger import HostStat, PingRecord, PingOptions, PingWorker
 from .exporter import Exporter
+from .config_manager import ConfigManager, get_local_ip_addresses
 
 __all__ = [
     "TargetItem",
@@ -12,5 +13,7 @@ __all__ = [
     "PingRecord",
     "PingOptions",
     "PingWorker",
-    "Exporter"
+    "Exporter",
+    "ConfigManager",
+    "get_local_ip_addresses"
 ]

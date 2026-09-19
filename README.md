@@ -53,7 +53,7 @@ chmod +x run_uos.sh
 ```bash
 python3 build_deb.py
 ```
-在统信 UOS 文件管理器中**双击 `uospingview_1.0.2_all.deb`**，点击「安装」即可安装至系统启动器与桌面。
+在统信 UOS 文件管理器中**双击 `youqian-pingview_1.0.17_all.deb`**，点击「安装」即可安装至系统启动器与桌面。
 
 ### 方式三：脚本一键系统级部署
 
@@ -81,7 +81,7 @@ sudo ./install_uos.sh
 
 ```
 Youqian-PingView/
-├── uos_pingview/               # 核心源码包
+├── youqian_pingview/          # 核心源码包
 │   ├── main.py                 # 应用程序主入口 (双引擎自适应)
 │   ├── qt_compat.py            # Qt 跨版本与环境兼容层
 │   ├── core/
@@ -96,7 +96,7 @@ Youqian-PingView/
 │   │   └── tk_window.py        # Python 原生零依赖备用图形引擎
 │   └── resources/
 │       ├── icons.py            # 自绘轻量矢量状态指示灯与图标
-│       └── uos_pingview.desktop# Linux 桌面启动入口配置
+│       └── youqian-pingview.desktop# Linux 桌面启动入口配置
 ├── tests/
 │   └── test_core.py            # 自动化单元测试套件
 ├── build_deb.py                # 标准 Debian/UOS .deb 安装包构建脚本

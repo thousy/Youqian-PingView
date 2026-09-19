@@ -51,9 +51,9 @@ def main():
 - **活动故障实时呈现**：在「仅显示失败」视图下，一旦有新故障毫秒级自动弹现在页面上；支持右键「禁用此项」立即隐藏。
 
 ### 📦 安装包与资产说明
-1. **`uospingview_1.0.2_all.deb`**：统信 UOS / Debian 标准安装包，下载后直接双击一键安装；
-2. **`Youqian-PingView-v1.0.2-Linux.tar.gz`**：Linux 绿色免安装运行合集（推荐，解压直接 `./run_uos.sh` 运行）；
-3. **`Youqian-PingView-v1.0.2-Linux.zip`**：通用免安装合集压缩包。
+1. **`youqian-pingview_1.0.17_all.deb`**：统信 UOS / Debian 标准安装包，下载后直接双击一键安装；
+2. **`Youqian-PingView-v1.0.17-Linux.tar.gz`**：Linux 绿色免安装运行合集（推荐，解压直接 `./run_uos.sh` 运行）；
+3. **`Youqian-PingView-v1.0.17-Linux.zip`**：通用免安装合集压缩包。
 """
 
     payload = {
@@ -92,12 +92,13 @@ def main():
     release_id = rel_data['id']
     upload_base = f'https://uploads.github.com/repos/{repo}/releases/{release_id}/assets'
 
-    # 2. 上传二进制 Assets
+    # 2. 上传二进制 Assets (从 dist/ 目录读取)
     base_dir = r'd:\AI_Project\pinginfoview3.5'
+    dist_dir = os.path.join(base_dir, 'dist')
     assets = [
-        ('uospingview_1.0.2_all.deb', 'application/vnd.debian.binary-package', os.path.join(base_dir, 'uospingview_1.0.2_all.deb')),
-        ('Youqian-PingView-v1.0.2-Linux.tar.gz', 'application/gzip', os.path.join(base_dir, 'Youqian-PingView-v1.0.2-Linux.tar.gz')),
-        ('Youqian-PingView-v1.0.2-Linux.zip', 'application/zip', os.path.join(base_dir, 'Youqian-PingView-v1.0.2-Linux.zip'))
+        ('youqian-pingview_1.0.17_all.deb', 'application/vnd.debian.binary-package', os.path.join(dist_dir, 'youqian-pingview_1.0.17_all.deb')),
+        ('Youqian-PingView-v1.0.17-Linux.tar.gz', 'application/gzip', os.path.join(dist_dir, 'Youqian-PingView-v1.0.17-Linux.tar.gz')),
+        ('Youqian-PingView-v1.0.17-Linux.zip', 'application/zip', os.path.join(dist_dir, 'Youqian-PingView-v1.0.17-Linux.zip'))
     ]
 
     for name, ctype, path in assets:

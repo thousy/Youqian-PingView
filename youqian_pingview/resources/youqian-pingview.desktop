@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Youqian-PingView
+Name[zh_CN]=YouQian 批量网络监控工具
+Comment=Multi-Host Ping Monitor for Linux Desktop
+Comment[zh_CN]=YouQian 批量多目标网络连通性监控工具
+Exec=/usr/bin/python3 /opt/youqian-pingview/main.py
+Icon=/usr/share/pixmaps/youqian-pingview.svg
+Terminal=false
+Type=Application
+Categories=Network;System;Utility;
+Keywords=ping;network;icmp;uos;monitor;youqian;
+StartupNotify=true

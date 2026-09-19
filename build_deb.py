@@ -29,7 +29,18 @@ def create_ar_archive(files: list, output_path: str):
                 ar.write(b"\n")
 
 
-def build_deb_package(source_dir: str, output_deb_path: str):
+def get_version(source_dir: str) -> str:
+    """自动读取 youqian_pingview/__init__.py 中的真实版本号"""
+    init_path = os.path.join(source_dir, "youqian_pingview", "__init__.py")
+    if os.path.exists(init_path):
+        with open(init_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("__version__"):
+                    return line.split("=")[1].strip().strip("\"'")
+    return "1.0.3"
+
+
+def build_deb_package(source_dir: str, output_deb_path: str, version: str = None):
     now = time.time()
 
     # 1. 创建 debian-binary
@@ -37,8 +48,9 @@ def build_deb_package(source_dir: str, output_deb_path: str):
 
     # 2. 创建 control.tar.gz
     # 注意: python3-pyqt5 列为 Recommends 而非 Depends，避免未激活 UOS 官方源 401 导致安装中断
-    control_content = """Package: uospingview
-Version: 1.0.2
+    Version = version or get_version(source_dir)
+    control_content = f"""Package: youqian-pingview
+Version: {Version}
 Section: net
 Priority: optional
 Architecture: all
@@ -46,8 +58,8 @@ Depends: python3 (>= 3.7), iputils-ping
 Recommends: python3-pyqt5
 Maintainer: MoMo <momo@chinauos.com>
 Installed-Size: 220
-Description: 统信 UOS 批量网络探测监控工具 (PingInfoView 原生版)
- 专为统信 UOS Desktop V25 深度定制的原生图形化多目标网络连通性监控工具。
+Description: YouQian 批量网络监控工具 (PingInfoView 原生版)
+ 专为统信 UOS Desktop V25 与 Linux 深度定制的原生图形化多目标网络连通性监控工具。
  采用经典双窗格设计，支持多目标并发 Ping 探测、CIDR 网段批量展开、
  连续丢包告警、HTML/CSV 统计报表导出等。内置双引擎保障，零依赖开箱即用。
 """.replace("\r\n", "\n")
@@ -99,7 +111,7 @@ exit 0
         # 建立目录
         dirs = [
             "./opt",
-            "./opt/uos_pingview",
+            "./opt/youqian-pingview",
             "./usr",
             "./usr/bin",
             "./usr/share",
@@ -109,13 +121,14 @@ exit 0
         for d in dirs:
             add_dir(d)
 
-        # 添加源码到 /opt/uos_pingview
-        src_root = os.path.join(source_dir, "uos_pingview")
+        # 添加源码到 /opt/youqian-pingview/youqian_pingview
+        src_root = os.path.join(source_dir, "youqian_pingview")
         for root, _, files in os.walk(src_root):
             if "__pycache__" in root:
                 continue
-            rel_dir = os.path.relpath(root, source_dir).replace("\\", "/")
-            add_dir(f"./opt/{rel_dir}")
+            rel_dir = os.path.relpath(root, src_root)
+            target_dir = "./opt/youqian-pingview/youqian_pingview" if rel_dir == "." else f"./opt/youqian-pingview/youqian_pingview/{rel_dir.replace(os.sep, '/')}"
+            add_dir(target_dir)
             for f in files:
                 if f.endswith(".pyc"):
                     continue
@@ -124,32 +137,48 @@ exit 0
                     content = fp.read()
                 if f.endswith((".py", ".desktop", ".sh", ".ini", ".txt", ".md")):
                     content = content.replace(b"\r\n", b"\n")
-                add_file(f"./opt/{rel_dir}/{f}", content, mode=0o644)
+                add_file(f"{target_dir}/{f}", content, mode=0o644)
+
+        # 增加 /opt/youqian-pingview/main.py 引导入口
+        opt_main = """#!/usr/bin/env python3
+import sys
+import os
+
+_base = os.path.dirname(os.path.abspath(__file__))
+if _base not in sys.path:
+    sys.path.insert(0, _base)
+
+from youqian_pingview.main import main
+
+if __name__ == "__main__":
+    main()
+""".replace("\r\n", "\n").encode("utf-8")
+        add_file("./opt/youqian-pingview/main.py", opt_main, mode=0o755)
 
         # 启动脚本
         runner_sh = """#!/bin/bash
-export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb;wayland}"
-exec /usr/bin/python3 /opt/uos_pingview/main.py "$@"
+export PYTHONPATH="/opt/youqian-pingview:${PYTHONPATH}"
+exec /usr/bin/python3 /opt/youqian-pingview/main.py "$@"
 """.replace("\r\n", "\n").encode("utf-8")
-        add_file("./usr/bin/uospingview", runner_sh, mode=0o755)
+        add_file("./usr/bin/youqian-pingview", runner_sh, mode=0o755)
 
         # 桌面快捷方式
         desktop_entry = """[Desktop Entry]
-Name=UOSPingView
-Name[zh_CN]=批量网络监控工具 (PingInfoView)
+Name=Youqian-PingView
+Name[zh_CN]=YouQian 批量网络监控工具
 GenericName=Ping Monitor
 GenericName[zh_CN]=网络连通性探测
-Comment=Multi-Host Ping Monitor for UOS Desktop
-Comment[zh_CN]=统信 UOS 批量多目标网络连通性监控工具
-Exec=/usr/bin/uospingview %F
-Icon=/usr/share/pixmaps/uospingview.svg
+Comment=Multi-Host Ping Monitor for Linux Desktop
+Comment[zh_CN]=YouQian 批量多目标网络连通性监控工具
+Exec=/usr/bin/youqian-pingview %F
+Icon=/usr/share/pixmaps/youqian-pingview.svg
 Terminal=false
 Type=Application
 Categories=Network;System;Utility;
-Keywords=ping;network;icmp;uos;monitor;
+Keywords=ping;network;icmp;uos;monitor;youqian;
 StartupNotify=true
 """.replace("\r\n", "\n").encode("utf-8")
-        add_file("./usr/share/applications/uospingview.desktop", desktop_entry, mode=0o644)
+        add_file("./usr/share/applications/youqian-pingview.desktop", desktop_entry, mode=0o644)
 
         # 矢量图标
         icon_svg = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
@@ -167,7 +196,7 @@ StartupNotify=true
   <polyline points="20,64 42,64 52,36 64,92 76,46 86,64 108,64" fill="none" stroke="#22c55e" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
 </svg>
 """.replace("\r\n", "\n").encode("utf-8")
-        add_file("./usr/share/pixmaps/uospingview.svg", icon_svg, mode=0o644)
+        add_file("./usr/share/pixmaps/youqian-pingview.svg", icon_svg, mode=0o644)
 
     data_tar_gz = data_buf.getvalue()
 
@@ -182,9 +211,8 @@ StartupNotify=true
 
 
 if __name__ == "__main__":
-    src = r"d:\AI_Project\pinginfoview3.5"
-    out = os.path.join(src, "uospingview_1.0.2_all.deb")
-    build_deb_package(src, out)
-    # 同步覆盖
-    build_deb_package(src, os.path.join(src, "uospingview_1.0.0_all.deb"))
-    build_deb_package(src, os.path.join(src, "uospingview_1.0.1_all.deb"))
+    import sys
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    ver = get_version(base_dir)
+    output_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base_dir, f"youqian-pingview_{ver}_all.deb")
+    build_deb_package(base_dir, output_path, version=ver)

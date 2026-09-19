@@ -15,10 +15,18 @@ from typing import List, Optional
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-from ..core.target_parser import TargetItem, parse_targets_text
-from ..core.pinger import HostStat, PingRecord, PingOptions, PingWorker
-from ..core.exporter import Exporter
-from .target_dialog import SAMPLE_TEXT
+try:
+    from youqian_pingview.core.target_parser import TargetItem, parse_targets_text
+    from youqian_pingview.core.pinger import HostStat, PingRecord, PingOptions, PingWorker
+    from youqian_pingview.core.exporter import Exporter
+    from youqian_pingview.core.constants import SAMPLE_TEXT, WINDOW_TITLE, APP_VERSION
+    from youqian_pingview.core.config_manager import ConfigManager
+except (ImportError, ModuleNotFoundError, ValueError):
+    from core.target_parser import TargetItem, parse_targets_text
+    from core.pinger import HostStat, PingRecord, PingOptions, PingWorker
+    from core.exporter import Exporter
+    from core.constants import SAMPLE_TEXT, WINDOW_TITLE, APP_VERSION
+    from core.config_manager import ConfigManager
 
 
 class TkOptionsDialog(tk.Toplevel):
@@ -93,10 +101,14 @@ class TkTargetDialog(tk.Toplevel):
         self.init_ui(current_text)
 
     def init_ui(self, initial_text: str):
+        tip_frame = ttk.LabelFrame(self, text=" 格式与分组填写说明 ", padding=6)
+        tip_frame.pack(fill=tk.X, padx=10, pady=(6, 2))
+
         ttk.Label(
-            self,
-            text="请输入 IP 地址、域名或 CIDR 网段 (支持空格隔开添加中文描述，支持 # 注释)：",
-            padding=8
+            tip_frame,
+            text="📌 目标格式：每行一个探测目标，格式为 IP/域名 描述说明 (支持 :80 端口、/24 网段与 1.1-1.20 范围)\n"
+                 "📁 分组设置：单独起一行输入 Group: 分组名 或 分组: 分组名，下方地址自动归组 (支持主界面双击折叠)",
+            justify=tk.LEFT
         ).pack(anchor=tk.W)
 
         self.txt_edit = tk.Text(self, wrap=tk.NONE, font=("Courier", 10), bg="#fafafa")
@@ -107,6 +119,12 @@ class TkTargetDialog(tk.Toplevel):
         btn_box.pack(fill=tk.X)
 
         ttk.Button(btn_box, text="从文件载入...", command=self.load_file).pack(side=tk.LEFT, padx=5)
+
+        def insert_group_tk():
+            self.txt_edit.insert(tk.INSERT, "\nGroup: 新分组名称\n")
+            self.txt_edit.focus_set()
+
+        ttk.Button(btn_box, text="➕ 插入分组模板", command=insert_group_tk).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_box, text="清空", command=lambda: self.txt_edit.delete("1.0", tk.END)).pack(side=tk.LEFT, padx=5)
 
         ttk.Button(btn_box, text="取消", command=self.destroy).pack(side=tk.RIGHT, padx=5)
@@ -140,14 +158,25 @@ class TkMainWindow:
     """Tkinter 原生双窗格主窗口"""
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("UOSPingView - 统信 UOS 批量网络监控工具 (原生免依赖版)")
         self.root.geometry("1120x680")
         self.root.minsize(800, 500)
 
-        self.options = PingOptions()
+        # 1. 加载配置与目标
+        saved_cfg = ConfigManager.load_config()
+        self.options = PingOptions.from_dict(saved_cfg.get("options", {}))
+
+        if self.options.remember_targets and saved_cfg.get("targets_text"):
+            self.target_raw_text = saved_cfg.get("targets_text")
+        else:
+            self.target_raw_text = SAMPLE_TEXT
+
+        # 2. 动态窗口标题
+        self.update_window_title()
+
         self.hosts: List[HostStat] = []
-        self.target_raw_text = SAMPLE_TEXT
         self.is_running = False
+        self.current_round_id: int = 0
+        self.is_probing_round_active: bool = False
         self.selected_host_index: Optional[int] = None
         self.countdown_sec = 0
 
@@ -156,7 +185,31 @@ class TkMainWindow:
         self.init_split_view()
         self.init_statusbar()
 
-        self.load_targets_data(SAMPLE_TEXT)
+        self.load_targets_data(self.target_raw_text)
+
+        # 窗口关闭监听
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        if self.options.auto_start_ping and self.hosts:
+            self.root.after(200, self.start_ping)
+
+    def update_window_title(self):
+        if self.options.custom_window_title:
+            self.root.title(f"{self.options.custom_window_title} - {WINDOW_TITLE}")
+        else:
+            self.root.title(WINDOW_TITLE)
+
+    def on_close(self):
+        try:
+            data = {
+                "targets_text": self.target_raw_text if self.options.remember_targets else "",
+                "options": self.options.to_dict()
+            }
+            ConfigManager.save_config(data)
+        except Exception:
+            pass
+        self.stop_ping()
+        self.root.destroy()
 
     def init_menu(self):
         menubar = tk.Menu(self.root)
@@ -182,7 +235,7 @@ class TkMainWindow:
 
         # 帮助
         help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="关于 UOSPingView", command=self.show_about)
+        help_menu.add_command(label="关于 Youqian-PingView", command=self.show_about)
         menubar.add_cascade(label="帮助(H)", menu=help_menu)
 
         # 快捷键绑定
@@ -206,6 +259,7 @@ class TkMainWindow:
 
         ttk.Button(tb, text="➕ 目标列表", command=self.open_target_dialog).pack(side=tk.LEFT, padx=3)
         ttk.Button(tb, text="⚙ 探测设置", command=self.open_options_dialog).pack(side=tk.LEFT, padx=3)
+        ttk.Button(tb, text="🔤 排序 (AZ)", command=lambda: self.sort_by_column("index")).pack(side=tk.LEFT, padx=3)
         ttk.Button(tb, text="📊 导出报表", command=lambda: self.export_data("html")).pack(side=tk.LEFT, padx=3)
         ttk.Separator(tb, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=6)
 
@@ -230,26 +284,31 @@ class TkMainWindow:
         frame_upper = ttk.Frame(paned)
         paned.add(frame_upper, height=420)
 
-        # 上表格 Treeview
+        # 上表格 Treeview (22 列对齐原版)
         upper_cols = (
-            "status", "index", "target", "resolved_ip", "last_status",
-            "success", "failed", "fail_rate", "last_lat", "avg_lat",
-            "min_lat", "max_lat", "ttl", "consec_fail", "last_succ_time", "desc"
+            "status", "index", "target", "resolved_ip", "reply_ip", "success", "failed",
+            "consec_fail", "max_consec_fail", "max_consec_time", "fail_rate", "total_sent",
+            "last_status", "last_time", "last_ttl", "avg_lat", "desc", "last_succ_time",
+            "last_failed_time", "min_lat", "max_lat", "disabled", "mac"
         )
         self.tree_upper = ttk.Treeview(frame_upper, columns=upper_cols, show="headings", selectmode="browse")
         self.tree_upper.bind("<Button-3>", self.show_upper_menu)
 
         headers_def = [
-            ("status", "状态", 60), ("index", "序号", 45), ("target", "目标", 130),
-            ("resolved_ip", "解析IP", 110), ("last_status", "最后状态", 80),
-            ("success", "成功", 50), ("failed", "失败", 50), ("fail_rate", "丢包率", 65),
-            ("last_lat", "最后延迟", 70), ("avg_lat", "平均延迟", 70),
-            ("min_lat", "最小", 55), ("max_lat", "最大", 55),
-            ("ttl", "TTL", 50), ("consec_fail", "连续失败", 65),
-            ("last_succ_time", "最后成功时间", 135), ("desc", "备注描述", 150)
+            ("status", "状态", 60), ("index", "序号", 45), ("target", "主机名", 130),
+            ("resolved_ip", "IP 地址", 110), ("reply_ip", "响应 IP 地址", 110),
+            ("success", "成功次数", 60), ("failed", "失败次数", 60),
+            ("consec_fail", "连续失败次数", 80), ("max_consec_fail", "最大连续失败次数", 100),
+            ("max_consec_time", "最大连续失败时间", 125), ("fail_rate", "失败率(%)", 65),
+            ("total_sent", "总计发送Pings数", 95), ("last_status", "最后 Ping 状态", 85),
+            ("last_time", "最后 Ping 时间", 85), ("last_ttl", "最后 Ping TTL", 75),
+            ("avg_lat", "平均 Ping 时间", 85), ("desc", "描述", 140),
+            ("last_succ_time", "最后成功时间", 125), ("last_failed_time", "最后失败时间", 125),
+            ("min_lat", "最小Ping时间", 80), ("max_lat", "最大Ping时间", 80),
+            ("disabled", "禁用", 50), ("mac", "MAC 地址", 120)
         ]
         for col_id, col_name, width in headers_def:
-            self.tree_upper.heading(col_id, text=col_name)
+            self.tree_upper.heading(col_id, text=col_name, command=lambda c=col_id: self.sort_by_column(c))
             self.tree_upper.column(col_id, width=width, anchor=tk.CENTER if col_id not in ("target", "desc") else tk.W)
 
         # 滚动条
@@ -277,12 +336,13 @@ class TkMainWindow:
         self.lbl_lower_title = ttk.Label(frame_lower, text="选中主机的历史明细流水 (请在上表中点击选择某主机):", padding=2)
         self.lbl_lower_title.pack(anchor=tk.W)
 
-        lower_cols = ("seq", "time", "target", "resp_ip", "lat", "ttl", "status")
+        lower_cols = ("time", "resp_ip", "lat", "ttl", "status", "seq")
         self.tree_lower = ttk.Treeview(frame_lower, columns=lower_cols, show="headings", selectmode="browse")
 
         lower_headers = [
-            ("seq", "序号", 50), ("time", "探测时间", 140), ("target", "目标", 130),
-            ("resp_ip", "响应IP", 120), ("lat", "耗时(ms)", 80), ("ttl", "TTL", 60), ("status", "结果状态", 100)
+            ("time", "发送时间", 140), ("resp_ip", "响应 IP 地址", 120),
+            ("lat", "Ping 时间", 80), ("ttl", "Ping 衰减", 60),
+            ("status", "Ping 状态", 100), ("seq", "Ping 计数", 60)
         ]
         for col_id, col_name, width in lower_headers:
             self.tree_lower.heading(col_id, text=col_name)
@@ -309,11 +369,31 @@ class TkMainWindow:
         self.lbl_timer.pack(side=tk.RIGHT, padx=10)
 
     def load_targets_data(self, text: str):
+        self.current_round_id += 1  # 切换目标清单，使所有旧在途探测回调立即作废
+        self.is_probing_round_active = False
         self.target_raw_text = text
-        items = parse_targets_text(text)
+        items = parse_targets_text(
+            text,
+            skip_first=self.options.cidr_skip_first,
+            skip_last=self.options.cidr_skip_last,
+            use_ip_host_format=self.options.use_ip_host_format
+        )
+
+        if not self.options.allow_ipv6:
+            import ipaddress
+            filtered_items = []
+            for it in items:
+                try:
+                    if ipaddress.ip_address(it.target).version == 6:
+                        continue
+                except ValueError:
+                    pass
+                filtered_items.append(it)
+            items = filtered_items
+
         self.hosts = []
         for idx, it in enumerate(items, start=1):
-            self.hosts.append(HostStat(idx, it.target, it.description, it.port))
+            self.hosts.append(HostStat(idx, it.target, it.description, it.port, group=it.group))
         self.refresh_upper_table()
         self.update_summary()
 
@@ -324,7 +404,7 @@ class TkMainWindow:
 
         for idx, host in enumerate(self.hosts):
             if kw:
-                c_str = f"{host.target} {host.resolved_ip} {host.description}".lower()
+                c_str = f"{host.target} {host.resolved_ip} {host.description} {host.group}".lower()
                 if kw not in c_str:
                     continue
 
@@ -358,18 +438,25 @@ class TkMainWindow:
                 host.index,
                 f"{host.target}:{host.port}" if host.port else host.target,
                 host.resolved_ip or "--",
-                host.last_status,
+                host.reply_ip or host.resolved_ip or "--",
                 host.success_count,
                 host.failed_count,
-                f"{host.failure_rate:.1f}%",
-                f"{host.last_latency_ms:.2f}" if host.last_latency_ms is not None else "--",
-                f"{host.avg_latency_ms:.2f}" if host.avg_latency_ms is not None else "--",
-                f"{host.min_latency_ms:.2f}" if host.min_latency_ms is not None else "--",
-                f"{host.max_latency_ms:.2f}" if host.max_latency_ms is not None else "--",
-                host.last_ttl if host.last_ttl is not None else "--",
                 host.consecutive_failures,
+                host.max_consecutive_failures,
+                host.max_consecutive_failure_time or "--",
+                f"{host.failure_rate:.1f}%",
+                host.total_sent,
+                host.last_status,
+                f"{host.last_latency_ms:.3f}" if host.last_latency_ms is not None else "--",
+                host.last_ttl if host.last_ttl is not None else "--",
+                f"{host.avg_latency_ms:.3f}" if host.avg_latency_ms is not None else "--",
+                host.description or "",
                 host.last_success_time or "--",
-                host.description or ""
+                host.last_failed_time or "--",
+                f"{host.min_latency_ms:.3f}" if host.min_latency_ms is not None else "--",
+                f"{host.max_latency_ms:.3f}" if host.max_latency_ms is not None else "--",
+                "是" if not host.enabled else "否",
+                host.mac_address or "--"
             )
             self.tree_upper.insert("", tk.END, iid=str(idx), values=vals, tags=(tag,))
 
@@ -409,15 +496,54 @@ class TkMainWindow:
         for rec in reversed(host.history_records):
             tag = "fail" if rec.status not in ("成功", "端口开放") else ""
             vals = (
-                rec.sequence,
                 rec.timestamp,
-                rec.target,
-                rec.resolved_ip or "--",
-                f"{rec.latency_ms:.2f}" if rec.latency_ms is not None else "--",
+                rec.resolved_ip or rec.target or "--",
+                f"{rec.latency_ms:.3f}" if rec.latency_ms is not None else "--",
                 rec.ttl if rec.ttl is not None else "--",
-                rec.status
+                rec.status,
+                rec.sequence
             )
             self.tree_lower.insert("", tk.END, values=vals, tags=(tag,) if tag else ())
+
+    def sort_by_column(self, col_id: str):
+        """点击表头按该列排序，再点一下反序"""
+        if not hasattr(self, "_sort_col"):
+            self._sort_col = None
+            self._sort_desc = False
+
+        if self._sort_col == col_id:
+            self._sort_desc = not self._sort_desc
+        else:
+            self._sort_col = col_id
+            self._sort_desc = False
+
+        def get_k(h: HostStat):
+            if col_id == "index": return h.index
+            elif col_id == "target": return h.target.lower()
+            elif col_id == "resolved_ip": return h.resolved_ip or ""
+            elif col_id == "reply_ip": return h.reply_ip or h.resolved_ip or ""
+            elif col_id == "success": return h.success_count
+            elif col_id == "failed": return h.failed_count
+            elif col_id == "consec_fail": return h.consecutive_failures
+            elif col_id == "max_consec_fail": return h.max_consecutive_failures
+            elif col_id == "max_consec_time": return h.max_consecutive_failure_time or ""
+            elif col_id == "fail_rate": return h.failure_rate
+            elif col_id == "total_sent": return h.total_sent
+            elif col_id == "last_status": return h.last_status
+            elif col_id == "last_time": return (1, 0) if h.last_latency_ms is None else (0, h.last_latency_ms)
+            elif col_id == "last_ttl": return (1, 0) if h.last_ttl is None else (0, h.last_ttl)
+            elif col_id == "avg_lat": return (1, 0) if h.avg_latency_ms is None else (0, h.avg_latency_ms)
+            elif col_id == "desc": return (h.description or "").lower()
+            elif col_id == "last_succ_time": return h.last_success_time or ""
+            elif col_id == "last_failed_time": return h.last_failed_time or ""
+            elif col_id == "min_lat": return (1, 0) if h.min_latency_ms is None else (0, h.min_latency_ms)
+            elif col_id == "max_lat": return (1, 0) if h.max_latency_ms is None else (0, h.max_latency_ms)
+            elif col_id == "disabled": return 1 if not h.enabled else 0
+            elif col_id == "mac": return h.mac_address or ""
+            return h.index
+
+        self.hosts.sort(key=get_k, reverse=self._sort_desc)
+        self.refresh_upper_table()
 
     def start_ping(self):
         if not self.hosts:
@@ -431,61 +557,108 @@ class TkMainWindow:
 
     def stop_ping(self):
         self.is_running = False
+        self.current_round_id += 1  # 轮次递增，使在途旧任务失效
+        self.is_probing_round_active = False
         self.btn_start.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
         self.lbl_status.config(text="状态: 已停止")
         self.lbl_timer.config(text="下次探测: 已停止")
 
-    def run_probe_round(self):
-        if not self.is_running:
+    def run_probe_round(self, is_manual_single: bool = False):
+        if not self.is_running and not is_manual_single:
             return
+
+        if self.is_probing_round_active:
+            # 互斥保护，防止多轮重入
+            return
+
+        self.is_probing_round_active = True
+        self.current_round_id += 1
+        this_round = self.current_round_id
 
         self.lbl_status.config(text="状态: 正在发送 Ping 探测包...")
         timeout_ms = self.options.timeout_ms
         pkt_size = self.options.packet_size
-        max_workers = min(self.options.max_threads, len(self.hosts) or 1)
+        targets_snapshot = [(h.host_id, h) for h in self.hosts if h.enabled]
+        max_workers = min(self.options.max_threads, len(targets_snapshot) or 1)
 
         def worker():
-            with ThreadPoolExecutor(max_workers=max_workers) as pool:
-                futures = []
-                for idx, h in enumerate(self.hosts):
-                    if h.enabled:
-                        futures.append(pool.submit(self._probe_single, idx, h, timeout_ms, pkt_size))
-                for f in futures:
-                    f.result()
+            if targets_snapshot:
+                with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                    futures = []
+                    for hid, h in targets_snapshot:
+                        futures.append(pool.submit(self._probe_single, this_round, hid, h, timeout_ms, pkt_size))
+                    for f in futures:
+                        try:
+                            f.result()
+                        except Exception:
+                            pass
 
             # 一轮结束回到主线程调度
-            self.root.after(0, self.on_round_done)
+            self.root.after(0, lambda: self.on_round_done(this_round))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _probe_single(self, idx: int, host: HostStat, timeout_ms: int, pkt_size: int):
-        succ, lat, ttl, status_str, resp_ip = PingWorker.probe(host, timeout_ms, pkt_size)
-        self.root.after(0, lambda: self.on_single_result(idx, succ, lat, ttl, status_str, resp_ip))
+    def _probe_single(self, round_id: int, host_id: str, host: HostStat, timeout_ms: int, pkt_size: int):
+        succ, lat, ttl, status_str, resp_ip = PingWorker.probe(
+            host,
+            timeout_ms,
+            pkt_size,
+            custom_ttl_enabled=self.options.custom_ttl_enabled,
+            custom_ttl=self.options.custom_ttl,
+            dont_fragment=self.options.dont_fragment,
+            source_ipv4=self.options.source_ipv4,
+            source_ipv6=self.options.source_ipv6,
+            resolve_dns_every_ping=self.options.resolve_dns_every_ping
+        )
+        self.root.after(0, lambda: self.on_single_result(round_id, host_id, succ, lat, ttl, status_str, resp_ip))
 
-    def on_single_result(self, idx: int, succ: bool, lat, ttl, status_str: str, resp_ip: str):
-        if 0 <= idx < len(self.hosts):
-            host = self.hosts[idx]
-            host.update_result(succ, lat, ttl, status_str, resp_ip)
-            # 告警声音
-            if not succ and self.options.alarm_on_fail:
-                if host.consecutive_failures == self.options.alarm_fail_threshold:
-                    self.root.bell()
-            # 核心特性：在筛选视图下（如仅显示失败），一旦有新的探测结果，立即毫秒级刷新表格呈现！
-            filter_mode = self.combo_filter.current() if hasattr(self, 'combo_filter') else 0
-            if filter_mode != 0:
-                self.refresh_upper_table()
+    def on_single_result(self, round_id: int, host_id: str, succ: bool, lat, ttl, status_str: str, resp_ip: str):
+        if round_id != self.current_round_id:
+            return
 
-    def on_round_done(self):
+        host = None
+        for h in self.hosts:
+            if h.host_id == host_id:
+                host = h
+                break
+
+        if not host:
+            return
+
+        host.update_result(succ, lat, ttl, status_str, resp_ip)
+        # 告警声音
+        if not succ and self.options.alarm_on_fail:
+            if host.consecutive_failures == self.options.alarm_fail_threshold:
+                self.root.bell()
+        # 核心特性：在筛选视图下（如仅显示失败），一旦有新的探测结果，立即毫秒级刷新表格呈现！
+        filter_mode = self.combo_filter.current() if hasattr(self, 'combo_filter') else 0
+        if filter_mode != 0:
+            self.refresh_upper_table()
+
+    def on_round_done(self, round_id: int):
+        if round_id != self.current_round_id:
+            return
+
+        self.is_probing_round_active = False
         self.refresh_upper_table()
         if self.selected_host_index is not None and 0 <= self.selected_host_index < len(self.hosts):
             self.refresh_lower_table(self.hosts[self.selected_host_index])
         self.update_summary()
 
         if self.is_running:
+            if not self.options.auto_repeat:
+                self.stop_ping()
+                self.lbl_status.config(text="状态: 单次探测已完成")
+                self.lbl_timer.config(text="下次探测: 已结束")
+                return
+
             self.lbl_status.config(text="状态: 本轮探测完成，等待下一轮")
             self.countdown_sec = self.options.interval_sec
             self.tick_countdown()
+        else:
+            self.lbl_status.config(text="状态: 手动探测完成")
+            self.lbl_timer.config(text="下次探测: 已停止")
 
     def tick_countdown(self):
         if not self.is_running:
@@ -516,10 +689,12 @@ class TkMainWindow:
             self.stop_ping()
 
         def on_confirm(raw_text, parsed_items):
+            self.current_round_id += 1
+            self.is_probing_round_active = False
             self.target_raw_text = raw_text
             self.hosts = []
             for idx, it in enumerate(parsed_items, start=1):
-                self.hosts.append(HostStat(idx, it.target, it.description, it.port))
+                self.hosts.append(HostStat(idx, it.target, it.description, it.port, group=it.group))
             self.refresh_upper_table()
             self.update_summary()
             if was_running:
@@ -553,9 +728,10 @@ class TkMainWindow:
 
     def show_about(self):
         messagebox.showinfo(
-            "关于 UOSPingView",
-            "UOSPingView v1.0.2 (统信 UOS Desktop V25 原生专版)\n\n"
-            "完全对标 NirSoft PingInfoView 功能与双窗格体验。\n"
+            "关于 YouQian PingView",
+            f"YouQian PingView v{APP_VERSION}\n"
+            "YouQian 批量网络监控工具 (统信 UOS / Linux 专版)\n\n"
+            "完全对标 NirSoft PingInfoView 功能与经典双窗格体验。\n"
             "支持免 Root 多并发探测、CIDR 网段展开与 HTML/CSV 报表导出。\n\n"
             "深度适配统信 UOS 桌面操作系统。"
         )

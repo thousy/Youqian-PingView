@@ -4,6 +4,7 @@
 """
 
 import csv
+import html
 from datetime import datetime
 from typing import List
 from .pinger import HostStat
@@ -11,46 +12,64 @@ from .pinger import HostStat
 
 class Exporter:
     HEADERS = [
-        "序号", "目标", "IP地址", "状态", "成功次数", "失败次数",
-        "失败率(%)", "最后延迟(ms)", "平均延迟(ms)", "最小延迟(ms)", "最大延迟(ms)",
-        "最后TTL", "连续失败", "最后成功时间", "最后失败时间", "描述"
+        "序号", "主机名", "IP 地址", "响应 IP 地址", "成功次数", "失败次数",
+        "连续失败次数", "最大连续失败次数", "最大连续失败时间", "失败率(%)",
+        "总计发送Pings数", "最后 Ping 状态", "最后 Ping 时间", "最后 Ping TTL",
+        "平均 Ping 时间", "描述", "最后成功时间", "最后失败时间", "最小Ping时间",
+        "最大Ping时间", "禁用", "MAC 地址"
     ]
 
     @staticmethod
     def _host_to_row(host: HostStat) -> List[str]:
+        latency_str = f"{host.last_latency_ms:.3f}" if host.last_latency_ms is not None else "--"
+        avg_str = f"{host.avg_latency_ms:.3f}" if host.avg_latency_ms is not None else "--"
+        min_str = f"{host.min_latency_ms:.3f}" if host.min_latency_ms is not None else "--"
+        max_str = f"{host.max_latency_ms:.3f}" if host.max_latency_ms is not None else "--"
+        ttl_str = str(host.last_ttl) if host.last_ttl is not None else "--"
+        target_str = f"{host.target}:{host.port}" if host.port else host.target
+        hostname_str = host.hostname or target_str
+
         return [
             str(host.index),
-            f"{host.target}:{host.port}" if host.port else host.target,
+            hostname_str,
             host.resolved_ip or "--",
-            host.last_status,
+            host.reply_ip or host.resolved_ip or "--",
             str(host.success_count),
             str(host.failed_count),
-            f"{host.failure_rate:.1f}%",
-            f"{host.last_latency_ms:.2f}" if host.last_latency_ms is not None else "--",
-            f"{host.avg_latency_ms:.2f}" if host.avg_latency_ms is not None else "--",
-            f"{host.min_latency_ms:.2f}" if host.min_latency_ms is not None else "--",
-            f"{host.max_latency_ms:.2f}" if host.max_latency_ms is not None else "--",
-            str(host.last_ttl) if host.last_ttl is not None else "--",
             str(host.consecutive_failures),
+            str(host.max_consecutive_failures),
+            host.max_consecutive_failure_time or "--",
+            f"{host.failure_rate:.1f}%",
+            str(host.total_sent),
+            host.last_status,
+            latency_str,
+            ttl_str,
+            avg_str,
+            host.description or "",
             host.last_success_time or "--",
             host.last_failed_time or "--",
-            host.description or ""
+            min_str,
+            max_str,
+            "是" if not host.enabled else "否",
+            host.mac_address or "--"
         ]
 
     @classmethod
-    def export_csv(cls, hosts: List[HostStat], file_path: str):
+    def export_csv(cls, hosts: List[HostStat], file_path: str, add_header: bool = True):
         """导出为 UTF-8 BOM 编码的 CSV 文件 (兼容 Excel)"""
         with open(file_path, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
-            writer.writerow(cls.HEADERS)
+            if add_header:
+                writer.writerow(cls.HEADERS)
             for host in hosts:
                 writer.writerow(cls._host_to_row(host))
 
     @classmethod
-    def export_txt(cls, hosts: List[HostStat], file_path: str):
+    def export_txt(cls, hosts: List[HostStat], file_path: str, add_header: bool = True):
         """导出为制表符分隔的 TXT 文件"""
         with open(file_path, "w", encoding="utf-8") as f:
-            f.write("\t".join(cls.HEADERS) + "\n")
+            if add_header:
+                f.write("\t".join(cls.HEADERS) + "\n")
             for host in hosts:
                 f.write("\t".join(cls._host_to_row(host)) + "\n")
 
@@ -62,6 +81,7 @@ class Exporter:
         alive_hosts = sum(1 for h in hosts if h.last_status in ("成功", "端口开放"))
         down_hosts = sum(1 for h in hosts if h.total_sent > 0 and h.last_status not in ("成功", "端口开放"))
 
+        safe_title = html.escape(title)
         rows_html = []
         for host in hosts:
             row = cls._host_to_row(host)
@@ -76,7 +96,7 @@ class Exporter:
                 status_class = "status-none"
                 row_class = ""
 
-            tds = "".join([f"<td>{cell}</td>" for cell in row])
+            tds = "".join([f"<td>{html.escape(str(cell))}</td>" for cell in row])
             rows_html.append(f"<tr class='{row_class}'>{tds}</tr>")
 
         html_content = f"""<!DOCTYPE html>
@@ -84,7 +104,7 @@ class Exporter:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} - {now_str}</title>
+    <title>{safe_title} - {now_str}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -189,7 +209,7 @@ class Exporter:
     <div class="container">
         <div class="header">
             <div>
-                <h1>{title}</h1>
+                <h1>{safe_title}</h1>
                 <div class="meta">统信 UOS Desktop V25 原生探测监控生成</div>
             </div>
             <div class="meta">生成时间：{now_str}</div>
@@ -222,7 +242,7 @@ class Exporter:
         </div>
 
         <div class="footer">
-            由 UOSPingView 自动生成 · 适配统信 UOS 桌面操作系统 V25
+            由 Youqian-PingView 自动生成 · 适配统信 UOS 桌面操作系统 V25
         </div>
     </div>
 </body>

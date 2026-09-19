@@ -1,4 +1,4 @@
-# UOSPingView - 统信 UOS Desktop V25 批量网络监控工具
+# Youqian-PingView - 统信 UOS Desktop V25 批量网络监控工具
 
 > 原版 Windows 工具 **PingInfoView** 的原生 Linux / 统信 UOS 重构与升级版本。  
 > 专为 **统信 UOS Desktop V25** 桌面环境量身定制，免 root 权限运行，开箱即用。
@@ -75,7 +75,7 @@ sudo ./install_uos.sh
 ├── run_uos.sh                  # UOS 一键免安装启动脚本
 ├── install_uos.sh              # UOS 一键系统部署与创建桌面图标脚本
 ├── README_UOS.md               # 本说明文档
-├── uos_pingview/               # 核心源码包
+├── youqian_pingview/          # 核心源码包
 │   ├── main.py                 # 主程序入口
 │   ├── core/
 │   │   ├── target_parser.py    # IP/CIDR/范围/格式解析器
@@ -87,5 +87,5 @@ sudo ./install_uos.sh
 │   │   └── target_dialog.py    # 批量目标编辑对话框
 │   └── resources/
 │       ├── icons.py            # 自绘矢量图标与状态指示灯
-│       └── uos_pingview.desktop# 桌面启动项文件
+│       └── youqian-pingview.desktop# 桌面启动项文件
 ```
